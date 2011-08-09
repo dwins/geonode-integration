@@ -19,13 +19,15 @@ from geonode.maps.views import set_layer_permissions
 
 from geonode.maps.utils import upload, file_upload, GeoNodeException
 
-from tests.utils import check_layer, get_web_page
+from tests.utils import check_layer, get_web_page, unique_filename, get_ows_metadata
 
 from geonode.maps.utils import *
 
 from geonode.maps.gs_helpers import cascading_delete, fixup_style
 
 from django.core.exceptions import ObjectDoesNotExist
+
+from owslib.wcs import WebCoverageService
 
 TEST_DATA = os.path.join(settings.PROJECT_ROOT, 'geonode_test_data')
 
@@ -496,3 +498,121 @@ class GeoNodeMapTest(TestCase):
         new_map_url = urljoin(settings.SITEURL, "/maps/new") + "?" + \
                 urlencode(dict(layer=uploaded.typename))
         get_web_page(new_map_url)  # no assertion, but this will fail if the page 500's
+
+    def test_metadata_available_after_upload(self):
+        """Test metadata is available after upload
+        """
+
+        # Upload exposure data for this test
+        thefile = os.path.join(TEST_DATA, 'Population_2010_clip.tif')
+        uploaded = file_upload(thefile, overwrite=True, keywords=['sdfkjsdf','sdfkljsdf','sdlkjsdflkj','sdfkjsdflkjsdf'])
+        layer_name = uploaded.typename
+        wcs_url = settings.GEOSERVER_BASE_URL + 'wcs'
+        wcs = WebCoverageService(wcs_url, version='1.0.0')
+        print "WCS Contents = %s " % wcs.contents
+        layer_appears_immediately = layer_name in wcs.contents
+        
+        wait_time = 0
+        import time
+        time.sleep(wait_time)
+
+        wcs2 = WebCoverageService(wcs_url, version='1.0.0')
+        layer_appears_afterwards = layer_name in wcs2.contents
+
+        msg = ('Layer %s was not found after %s seconds in WxS contents on server %s.\n'
+               'WCS contents: %s\n'  % (layer_name, wait_time, wcs_url, wcs.contents))
+ 
+        assert layer_appears_afterwards, msg
+
+        msg = ('Layer %s was not found in WxS contents on server %s.\n'
+               'WCS contents: %s\n'  % (layer_name, wcs_url, wcs.contents))
+ 
+        assert layer_appears_immediately, msg   
+
+    def test_metadata_twice(self):
+        """Layer metadata can be correctly uploaded multiple times
+        """
+
+        # This test reproduces Risiko ticket #99 by creating new data,
+        # uploading twice and verifying metadata
+
+        # Base test data
+        filenames = ['lembang_mmi_hazmap.tif',]
+
+        for org_filename in filenames:
+            org_basename, ext = os.path.splitext(os.path.join(TEST_DATA,
+                                                              org_filename))
+
+            # Copy data to temporary unique name
+            basename = unique_filename(dir='/tmp')
+
+            print org_basename
+            print basename
+
+            if ext == '.tif':
+                layer_type = 'raster'
+                filename = '%s.tif' % basename
+                cmd = '/bin/cp %s.tif %s' % (org_basename, filename)
+                os.system(cmd)
+                keywords = ['category:hazard', 'subcategory:earthquake']
+            elif ext == '.shp':
+                layer_type = 'vector'
+                filename = '%s.shp' % basename
+                for e in ['shp', 'shx', 'sbx', 'sbn', 'dbf', 'prj']:
+                    cmd = '/bin/cp %s.%s %s.%s' % (org_basename, e,
+                                                   basename, e)
+                    os.system(cmd)
+                keywords = ['category:exposure', 'subcategory:building']
+            else:
+                msg = ('Unknown layer extension in %s. '
+                       'Expected .shp or .tif ' % filename)
+                raise Exception(msg)
+
+            # Repeat multiple times
+            for i in range(2):
+                # Upload
+                layer = file_upload(filename, overwrite=True, keywords=keywords)
+                
+                import time
+                time.sleep(1)
+                
+                #Get metadata
+                layer_name = '%s:%s' % (layer.workspace, layer.name)
+                ows_url = os.path.join(settings.GEOSERVER_BASE_URL, 'ows')
+                metadata = get_ows_metadata(ows_url, layer_name)
+                print metadata
+
+                # Verify
+                assert 'id' in metadata
+                assert 'title' in metadata
+                assert 'layer_type' in metadata
+                assert 'keywords' in metadata
+                assert 'bounding_box' in metadata
+                assert len(metadata['bounding_box']) == 4
+
+                # Check keywords
+                if layer_type == 'raster':
+                    category = 'hazard'
+                    subcategory = 'earthquake'
+                elif layer_type == 'vector':
+                    category = 'exposure'
+                    subcategory = 'building'
+                else:
+                    msg = 'Unknown layer type %s' % layer_type
+                    raise Exception(msg)
+
+                keywords = metadata['keywords']
+
+                msg = 'Did not find key "category" in keywords: %s' % keywords
+                assert 'category' in keywords, msg
+
+                msg = 'Did not find key "subcategory" in keywords: %s' % keywords
+                assert 'subcategory' in keywords, msg
+
+                msg = ('Category keyword %s did not match expected %s'
+                       % (keywords['category'], category))
+                assert category == keywords['category'], msg
+
+                msg = ('Subcategory keyword %s did not match expected %s'
+                       % (keywords['subcategory'], category))
+                assert subcategory == keywords['subcategory'], msg
