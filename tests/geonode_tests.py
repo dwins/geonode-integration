@@ -21,7 +21,7 @@ from geonode.maps.views import set_layer_permissions
 
 from geonode.maps.utils import upload, file_upload, GeoNodeException
 
-from tests.utils import check_layer, get_web_page, unique_filename, get_ows_metadata
+from tests.utils import check_layer, get_web_page
 
 from geonode.maps.utils import *
 
@@ -561,9 +561,8 @@ class GeoNodeMapTest(TestCase):
                 for i in range(2):
                     # Upload
                     layer = file_upload(filename, overwrite=True, keywords=keywords)
-                    
-                    import time
-                    time.sleep(1)
+                    layer.keywords = ' '.join(keywords)
+                    layer.save()
                     
                     #Get metadata
                     layer_name = '%s:%s' % (layer.workspace, layer.name)
