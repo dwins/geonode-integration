@@ -590,29 +590,15 @@ class GeoNodeMapTest(TestCase):
                 assert 'bounding_box' in metadata
                 assert len(metadata['bounding_box']) == 4
 
+                retrieved_keywords = metadata['keywords']
+
                 # Check keywords
                 if layer_type == 'raster':
-                    category = 'hazard'
-                    subcategory = 'earthquake'
+                    assert 'category:hazard' in metadata['keywords']
+                    assert 'subcategory:earthquake' in metadata['keywords']
                 elif layer_type == 'vector':
-                    category = 'exposure'
-                    subcategory = 'building'
+                    assert 'category:exposure' in metadata['keywords']
+                    assert 'subcategory:building' in metadata['keywords']
                 else:
                     msg = 'Unknown layer type %s' % layer_type
                     raise Exception(msg)
-
-                retrieved_keywords = metadata['keywords']
-
-                msg = 'Did not find key "category" in keywords: %s' % retrieved_keywords
-                assert 'category' in retrieved_keywords, msg
-
-                msg = 'Did not find key "subcategory" in keywords: %s' % retrieved_keywords
-                assert 'subcategory' in retrieved_keywords, msg
-
-                msg = ('Category keyword %s did not match expected %s'
-                       % (retrieved_keywords['category'], category))
-                assert category == retrieved_keywords['category'], msg
-
-                msg = ('Subcategory keyword %s did not match expected %s'
-                       % (retrieved_keywords['subcategory'], category))
-                assert subcategory == retrieved_keywords['subcategory'], msg

@@ -126,19 +126,6 @@ def get_ows_metadata(server_url, layer_name):
         # FIXME (Ole): Uncomment when OWSLib patch has been submitted
         #Raise Exception(msg)
     else:
-        keyword_dict = {}
-        for keyword in layer.keywords:
-            if keyword is not None:
-                # FIXME (Ole): Why would this be None sometimes?
-
-                for keyword_string in keyword.split(','):
-
-                    if ':' in keyword_string:
-                        key, value = keyword_string.strip().split(':')
-                        keyword_dict[key] = value
-                    else:
-                        keyword_dict[keyword_string] = None
-
-        metadata['keywords'] = keyword_dict
+        metadata['keywords'] = layer.keywords
 
     return metadata
