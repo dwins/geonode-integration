@@ -4,6 +4,8 @@ from urlparse import urljoin
 from urllib import urlencode
 import contextlib 
 import json
+import shutil
+import tempfile
 
 from unittest import TestCase
 
@@ -28,6 +30,7 @@ from geonode.maps.gs_helpers import cascading_delete, fixup_style
 from django.core.exceptions import ObjectDoesNotExist
 
 from owslib.wcs import WebCoverageService
+from owslib.wfs import WebFeatureService
 
 TEST_DATA = os.path.join(settings.PROJECT_ROOT, 'geonode_test_data')
 
@@ -529,7 +532,8 @@ class GeoNodeMapTest(TestCase):
  
         assert layer_appears_immediately, msg   
 
-    def test_metadata_twice(self):
+
+    def test_coverage_metadata_twice(self):
         """Layer metadata can be correctly uploaded multiple times
         """
 
@@ -538,67 +542,45 @@ class GeoNodeMapTest(TestCase):
 
         # Base test data
         filenames = ['lembang_mmi_hazmap.tif',]
+        
+        msg = "This method only tests coverages"
+        assert all(f.endswith(".tif") for f in filenames), msg
 
         for org_filename in filenames:
-            org_basename, ext = os.path.splitext(os.path.join(TEST_DATA,
-                                                              org_filename))
+            full_path = os.path.join(TEST_DATA, org_filename)
+            org_basename, ext = os.path.splitext(full_path)
 
             # Copy data to temporary unique name
-            basename = unique_filename(dir='/tmp')
+            _, filename = tempfile.mkstemp(suffix='.tif')
 
-            print org_basename
-            print basename
-
-            if ext == '.tif':
-                layer_type = 'raster'
-                filename = '%s.tif' % basename
-                cmd = '/bin/cp %s.tif %s' % (org_basename, filename)
-                os.system(cmd)
+            try:
+                shutil.copy(full_path, filename)
                 keywords = ['category:hazard', 'subcategory:earthquake']
-            elif ext == '.shp':
-                layer_type = 'vector'
-                filename = '%s.shp' % basename
-                for e in ['shp', 'shx', 'sbx', 'sbn', 'dbf', 'prj']:
-                    cmd = '/bin/cp %s.%s %s.%s' % (org_basename, e,
-                                                   basename, e)
-                    os.system(cmd)
-                keywords = ['category:exposure', 'subcategory:building']
-            else:
-                msg = ('Unknown layer extension in %s. '
-                       'Expected .shp or .tif ' % filename)
-                raise Exception(msg)
 
-            # Repeat multiple times
-            for i in range(2):
-                # Upload
-                layer = file_upload(filename, overwrite=True, keywords=keywords)
-                
-                import time
-                time.sleep(1)
-                
-                #Get metadata
-                layer_name = '%s:%s' % (layer.workspace, layer.name)
-                ows_url = os.path.join(settings.GEOSERVER_BASE_URL, 'ows')
-                metadata = get_ows_metadata(ows_url, layer_name)
-                print metadata
+                # Repeat multiple times
+                for i in range(2):
+                    # Upload
+                    layer = file_upload(filename, overwrite=True, keywords=keywords)
+                    
+                    import time
+                    time.sleep(1)
+                    
+                    #Get metadata
+                    layer_name = '%s:%s' % (layer.workspace, layer.name)
+                    ows_url = os.path.join(settings.GEOSERVER_BASE_URL, 'ows')
+                    wcs = WebCoverageService(ows_url, version="1.0.0")
+                    metadata = wcs.contents[layer_name]
+                    print metadata
 
-                # Verify
-                assert 'id' in metadata
-                assert 'title' in metadata
-                assert 'layer_type' in metadata
-                assert 'keywords' in metadata
-                assert 'bounding_box' in metadata
-                assert len(metadata['bounding_box']) == 4
+                    # Verify
+                    assert hasattr(metadata, 'id')
+                    assert hasattr(metadata, 'title')
+                    assert hasattr(metadata, 'keywords')
+                    assert hasattr(metadata, 'boundingBoxWGS84')
+                    assert len(metadata.boundingBoxWGS84) == 4
 
-                retrieved_keywords = metadata['keywords']
-
-                # Check keywords
-                if layer_type == 'raster':
-                    assert 'category:hazard' in metadata['keywords']
-                    assert 'subcategory:earthquake' in metadata['keywords']
-                elif layer_type == 'vector':
-                    assert 'category:exposure' in metadata['keywords']
-                    assert 'subcategory:building' in metadata['keywords']
-                else:
-                    msg = 'Unknown layer type %s' % layer_type
-                    raise Exception(msg)
+                    retrieved_keywords = list(metadata.keywords)
+                    assert 'category:hazard' in retrieved_keywords
+                    assert 'subcategory:earthquake' in retrieved_keywords
+            finally:
+                os.remove(filename)
