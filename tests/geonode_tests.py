@@ -601,18 +601,18 @@ class GeoNodeMapTest(TestCase):
                     msg = 'Unknown layer type %s' % layer_type
                     raise Exception(msg)
 
-                keywords = metadata['keywords']
+                retrieved_keywords = metadata['keywords']
 
-                msg = 'Did not find key "category" in keywords: %s' % keywords
-                assert 'category' in keywords, msg
+                msg = 'Did not find key "category" in keywords: %s' % retrieved_keywords
+                assert 'category' in retrieved_keywords, msg
 
-                msg = 'Did not find key "subcategory" in keywords: %s' % keywords
-                assert 'subcategory' in keywords, msg
+                msg = 'Did not find key "subcategory" in keywords: %s' % retrieved_keywords
+                assert 'subcategory' in retrieved_keywords, msg
 
                 msg = ('Category keyword %s did not match expected %s'
-                       % (keywords['category'], category))
-                assert category == keywords['category'], msg
+                       % (retrieved_keywords['category'], category))
+                assert category == retrieved_keywords['category'], msg
 
                 msg = ('Subcategory keyword %s did not match expected %s'
-                       % (keywords['subcategory'], category))
-                assert subcategory == keywords['subcategory'], msg
+                       % (retrieved_keywords['subcategory'], category))
+                assert subcategory == retrieved_keywords['subcategory'], msg
